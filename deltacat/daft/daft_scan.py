@@ -4,12 +4,12 @@ from daft import Schema
 from daft.daft import (
     StorageConfig,
     PartitionField,
-    Pushdowns,
+    Pushdowns as DaftRustPushdowns,
     ScanTask,
     FileFormatConfig,
     ParquetSourceConfig,
 )
-from daft.io.scan import ScanOperator, ScanPushdowns
+from daft.io.scan import ScanOperator
 
 from deltacat.catalog.model.table_definition import TableDefinition
 from deltacat.daft.model import DaftPartitionKeyMapper
@@ -44,11 +44,8 @@ class DeltaCatScanOperator(ScanOperator):
             f"Storage config = {self.storage_config}",
         ]
 
-    def to_scan_tasks(self, pushdowns: Pushdowns) -> Iterator[ScanTask]:
-        daft_pushdowns = ScanPushdowns._from_pypushdowns(
-            pushdowns, schema=self.schema()
-        )
-        dc_pushdown = translate_pushdown(daft_pushdowns)
+    def to_scan_tasks(self, pushdowns: DaftRustPushdowns) -> Iterator[ScanTask]:
+        dc_pushdown = translate_pushdown(pushdowns)
         dc_scan_plan = self.table.create_scan_plan(pushdown=dc_pushdown)
         scan_tasks = []
         file_format_config = FileFormatConfig.from_parquet_config(
@@ -62,7 +59,8 @@ class DeltaCatScanOperator(ScanOperator):
                     file_format=file_format_config,
                     schema=self._schema._schema,
                     storage_config=self.storage_config,
-                    pushdowns=pushdowns,
+                    # TODO: do not pass down previously applied pushdowns
+                    pushdowns=pushdowns
                 )
                 scan_tasks.append(st)
         return iter(scan_tasks)
